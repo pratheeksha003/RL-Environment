@@ -1,0 +1,248 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:transparent}
+  #app{font-family:'Share Tech Mono',monospace;color:#e0e0d0;padding:16px;max-width:560px;margin:0 auto;user-select:none}
+  h1{font-family:'Orbitron',monospace;font-size:16px;font-weight:700;letter-spacing:3px;color:#ff6a00;text-transform:uppercase;margin-bottom:4px}
+  .subtitle{font-size:10px;color:#888;letter-spacing:2px;margin-bottom:16px}
+  .top-bar{display:flex;gap:12px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+  .mode-btn{background:transparent;border:1px solid #444;color:#aaa;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;padding:5px 14px;cursor:pointer;transition:all 0.15s}
+  .mode-btn.active{border-color:#ff6a00;color:#ff6a00;background:rgba(255,106,0,0.08)}
+  .mode-btn:hover:not(.active){border-color:#666;color:#ccc}
+  .stats{display:flex;gap:20px;margin-left:auto}
+  .stat{font-size:11px;color:#666;letter-spacing:1px}
+  .stat span{color:#e0e0d0;font-size:14px}
+  .grid-wrap{position:relative;display:inline-block}
+  .grid{display:grid;grid-template-columns:repeat(6,68px);gap:5px;margin-bottom:14px}
+  .cell{width:68px;height:68px;border-radius:4px;border:1px solid #2a2a2a;background:#141414;display:flex;align-items:center;justify-content:center;font-size:22px;transition:background 0.18s,border-color 0.18s;position:relative}
+  .cell.agent{background:#0d2b45;border-color:#378ADD}
+  .cell.fire{background:#2d0a00;border-color:#ff4422;animation:flicker 0.4s alternate infinite}
+  .cell.goal{background:#0a1e0a;border-color:#639922}
+  .cell.agent-fire{background:#2d0a00;border-color:#ff4422}
+  @keyframes flicker{from{background:#2d0a00;border-color:#ff4422}to{background:#3d1200;border-color:#ff6600}}
+  .legend{display:flex;gap:14px;font-size:10px;color:#666;margin-bottom:12px;flex-wrap:wrap}
+  .leg{display:flex;align-items:center;gap:5px}
+  .leg-dot{width:10px;height:10px;border-radius:2px;border:1px solid}
+  .msg{min-height:28px;font-size:12px;letter-spacing:1px;padding:6px 10px;border-radius:3px;margin-bottom:12px;border-left:3px solid transparent;transition:all 0.3s}
+  .msg.win{border-left-color:#639922;background:rgba(99,153,34,0.1);color:#97C459}
+  .msg.lose{border-left-color:#ff4422;background:rgba(255,68,34,0.1);color:#ff8866}
+  .msg.info{border-left-color:#378ADD;background:rgba(55,138,221,0.07);color:#85B7EB}
+  .msg.idle{color:#444;border-left-color:#222}
+  .controls{font-size:10px;color:#555;letter-spacing:1px;line-height:1.8}
+  .kbd{display:inline-block;border:1px solid #333;border-radius:3px;padding:0 5px;color:#888;font-size:10px;background:#1a1a1a}
+  .reset-btn{background:transparent;border:1px solid #333;color:#666;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;padding:4px 12px;cursor:pointer;transition:all 0.15s;margin-top:8px}
+  .reset-btn:hover{border-color:#666;color:#aaa}
+  .key-hint{display:inline-block;padding:2px 8px;border:1px solid #333;background:#111;border-radius:3px;font-size:10px;color:#666;margin:2px}
+  .key-hint.active{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.1)}
+</style>
+
+<div id="app">
+  <h1>Fire Escape</h1>
+  <div class="subtitle">AI REINFORCEMENT LEARNING SIMULATOR</div>
+
+  <div class="top-bar">
+    <button class="mode-btn active" id="btnAI" onclick="setMode('ai')">AI AUTO</button>
+    <button class="mode-btn" id="btnManual" onclick="setMode('manual')">MANUAL</button>
+    <div class="stats">
+      <div class="stat">SCORE <span id="score">0</span></div>
+      <div class="stat">STEPS <span id="steps">0</span></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#0d2b45;border-color:#378ADD"></div>agent</div>
+    <div class="leg"><div class="leg-dot" style="background:#2d0a00;border-color:#ff4422"></div>fire</div>
+    <div class="leg"><div class="leg-dot" style="background:#0a1e0a;border-color:#639922"></div>exit</div>
+    <div class="leg"><div class="leg-dot" style="background:#141414;border-color:#2a2a2a"></div>empty</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="msg idle" id="msg">[ waiting... ]</div>
+
+  <div id="manual-hint" style="display:none">
+    <div class="controls">
+      KEYBOARD: <span class="key-hint" id="k-up">W / ↑</span> <span class="key-hint" id="k-left">A / ←</span> <span class="key-hint" id="k-down">S / ↓</span> <span class="key-hint" id="k-right">D / →</span>
+    </div>
+  </div>
+  <div id="ai-hint">
+    <div class="controls">AI is navigating using Q-learning — watch it avoid the spreading fire</div>
+  </div>
+
+  <br>
+  <button class="reset-btn" onclick="resetGame()">RESET GAME</button>
+</div>
+
+<script>
+const SIZE = 6;
+const ACTIONS = [[-1,0],[1,0],[0,-1],[0,1]];
+const ALPHA=0.7,GAMMA=0.9,EPSILON=0.3;
+
+let Q = [];
+for(let i=0;i<SIZE;i++){Q[i]=[];for(let j=0;j<SIZE;j++)Q[i][j]=[0,0,0,0];}
+
+function step(pos,a){
+  let[x,y]=pos,[dx,dy]=ACTIONS[a];
+  let nx=x+dx,ny=y+dy;
+  return(nx>=0&&nx<SIZE&&ny>=0&&ny<SIZE)?[nx,ny]:pos;
+}
+
+function spreadFire(fire){
+  let nf=fire.map(f=>[...f]);
+  for(let f of fire){
+    if(Math.random()<0.22){
+      let[dx,dy]=ACTIONS[Math.floor(Math.random()*4)];
+      let nx=f[0]+dx,ny=f[1]+dy;
+      if(nx>=0&&nx<SIZE&&ny>=0&&ny<SIZE&&!nf.some(ff=>ff[0]===nx&&ff[1]===ny))
+        nf.push([nx,ny]);
+    }
+  }
+  return nf;
+}
+
+function inFire(pos,fire){return fire.some(f=>f[0]===pos[0]&&f[1]===pos[1]);}
+
+// Train
+for(let ep=0;ep<1500;ep++){
+  let agent=[0,0],goal=[5,5],fire=[[2,2],[2,3]];
+  for(let t=0;t<50;t++){
+    let[x,y]=agent;
+    let a=(Math.random()<EPSILON)?Math.floor(Math.random()*4):Q[x][y].indexOf(Math.max(...Q[x][y]));
+    let npos=step(agent,a);
+    fire=spreadFire(fire);
+    let r=(npos[0]===goal[0]&&npos[1]===goal[1])?100:inFire(npos,fire)?-100:-1;
+    let[nx,ny]=npos;
+    Q[x][y][a]+=ALPHA*(r+GAMMA*Math.max(...Q[nx][ny])-Q[x][y][a]);
+    agent=npos;
+    if(r!=-1)break;
+  }
+}
+
+let mode='ai';
+let agent=[0,0],fire=[[2,2],[2,3]],goal=[5,5];
+let score=0,steps=0,gameOver=false;
+let interval=null;
+let pressedKeys={};
+
+function setMode(m){
+  mode=m;
+  document.getElementById('btnAI').classList.toggle('active',m==='ai');
+  document.getElementById('btnManual').classList.toggle('active',m==='manual');
+  document.getElementById('manual-hint').style.display=m==='manual'?'block':'none';
+  document.getElementById('ai-hint').style.display=m==='ai'?'block':'none';
+  resetGame();
+}
+
+function resetGame(){
+  agent=[0,0];fire=[[2,2],[2,3]];goal=[5,5];
+  gameOver=false;
+  clearInterval(interval);
+  setMsg('idle','[ game started — find the exit ]');
+  render();
+  startLoop();
+}
+
+function startLoop(){
+  clearInterval(interval);
+  if(mode==='ai'){
+    interval=setInterval(aiTick,500);
+  } else {
+    interval=setInterval(fireTick,600);
+  }
+}
+
+function aiTick(){
+  if(gameOver)return;
+  let[x,y]=agent;
+  let a=(Math.random()<0.15)?Math.floor(Math.random()*4):Q[x][y].indexOf(Math.max(...Q[x][y]));
+  let np=step(agent,a);
+  if(np[0]===agent[0]&&np[1]===agent[1]){a=Math.floor(Math.random()*4);np=step(agent,a);}
+  agent=np;
+  fire=spreadFire(fire);
+  steps++;
+  checkState();
+  render();
+}
+
+function fireTick(){
+  if(gameOver)return;
+  fire=spreadFire(fire);
+  steps++;
+  if(inFire(agent,fire)){loseGame();} 
+  render();
+}
+
+function moveAgent(a){
+  if(gameOver||mode!=='manual')return;
+  agent=step(agent,a);
+  steps++;
+  checkState();
+  render();
+  flashKey(a);
+}
+
+function flashKey(a){
+  let ids=['k-up','k-down','k-left','k-right'];
+  let el=document.getElementById(ids[a]);
+  if(el){el.classList.add('active');setTimeout(()=>el.classList.remove('active'),180);}
+}
+
+function checkState(){
+  if(agent[0]===goal[0]&&agent[1]===goal[1]){winGame();}
+  else if(inFire(agent,fire)){loseGame();}
+}
+
+function winGame(){
+  score+=10;
+  document.getElementById('score').textContent=score;
+  setMsg('win','[ ESCAPED! +10 pts — resetting... ]');
+  gameOver=true;
+  setTimeout(()=>{agent=[0,0];fire=[[2,2],[2,3]];gameOver=false;steps=0;document.getElementById('steps').textContent=0;setMsg('idle','[ find the exit ]');render();},1800);
+}
+
+function loseGame(){
+  score-=5;
+  document.getElementById('score').textContent=score;
+  setMsg('lose','[ BURNED! -5 pts — resetting... ]');
+  gameOver=true;
+  setTimeout(()=>{agent=[0,0];fire=[[2,2],[2,3]];gameOver=false;steps=0;document.getElementById('steps').textContent=0;setMsg('idle','[ find the exit ]');render();},1800);
+}
+
+function setMsg(type,txt){
+  let el=document.getElementById('msg');
+  el.className='msg '+type;
+  el.textContent=txt;
+}
+
+function render(){
+  document.getElementById('steps').textContent=steps;
+  let g=document.getElementById('grid');
+  g.innerHTML='';
+  for(let i=0;i<SIZE;i++){
+    for(let j=0;j<SIZE;j++){
+      let d=document.createElement('div');
+      d.className='cell';
+      let isAgent=(agent[0]===i&&agent[1]===j);
+      let isFire=inFire([i,j],fire);
+      let isGoal=(goal[0]===i&&goal[1]===j);
+      if(isAgent&&isFire){d.className='cell agent-fire';d.textContent='💀';}
+      else if(isAgent){d.className='cell agent';d.textContent='🧑';}
+      else if(isFire){d.className='cell fire';d.textContent='🔥';}
+      else if(isGoal){d.className='cell goal';d.textContent='🚪';}
+      g.appendChild(d);
+    }
+  }
+}
+
+// Keyboard controls
+document.addEventListener('keydown',function(e){
+  let map={'ArrowUp':0,'KeyW':0,'ArrowDown':1,'KeyS':1,'ArrowLeft':2,'KeyA':2,'ArrowRight':3,'KeyD':3};
+  if(map[e.code]!==undefined){
+    e.preventDefault();
+    moveAgent(map[e.code]);
+  }
+});
+
+resetGame();
+</script>
